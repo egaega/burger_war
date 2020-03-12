@@ -9,6 +9,7 @@
     <!-- sample program node -->
 
     <node pkg="burger_war" type="MyRobot.py" name="myrobot" output="screen"/>
+    <node pkg="burger_war" type="enemy_tracer.py" name="enemy_tracer" output="screen"/>
 
     <!-- END sample program node -->
     <include file="$(find burger_war)/launch/obstacle_detector.launch">
