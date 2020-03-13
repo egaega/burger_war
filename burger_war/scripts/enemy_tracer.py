@@ -3,6 +3,7 @@
 
 import sys
 import rospy
+import math
 import tf
 from geometry_msgs.msg import PointStamped
 from geometry_msgs.msg import Pose2D
@@ -13,12 +14,15 @@ class enemy_tracer():
     def __init__(self, bot_name="NoName"):
         # bot names
         self.name = bot_name
+        self.robot_name = rospy.get_param('~robot_name', '')
+        # enemy pos
         self.enemy_pos = Pose2D() # x, y, th
         # tf
         self.tf_broadcaster  = tf.TransformBroadcaster()
         self.tf_listener = tf.TransformListener()
         # topic
-        self.sub_obstacles   = rospy.Subscriber('obstacles', Obstacles, self.obstacles_callback) # obstacle
+        self.sub_obstacles = rospy.Subscriber('obstacles', Obstacles, self.obstacles_callback) # obstacle
+        self.pub_enemypos_next = rospy.Publisher('enemypos_next', Pose2D, queue_size=1) # predicted enemy pos
 
     def obstacles_callback(self, msg):
         closest_enemy_len = sys.float_info.max
@@ -29,8 +33,13 @@ class enemy_tracer():
             temp_y = msg.circles[num].center.y
 
             #フィールド内のオブジェクトであればパス
-            if self.is_point_emnemy(temp_x, temp_y) == False:
+            if self.is_point_enemy(temp_x, temp_y) == False:
                 continue
+
+            #敵の座標をTFでbroadcast
+            enemy_frame_name = self.robot_name + '/enemy_' + str(num)
+            map_frame_name   = self.robot_name + "/map"
+            self.tf_broadcaster.sendTransform((temp_x,temp_y,0), (0,0,0,1), rospy.Time.now(), enemy_frame_name, map_frame_name)
 
             #ロボットから敵までの距離を計算
             try:
@@ -51,7 +60,7 @@ class enemy_tracer():
             self.enemy_pos.x = closest_enemy_x
             self.enemy_pos.y = closest_enemy_y
             #敵の座標をTFでbroadcast
-            enemy_frame_name = self.robot_name + '/enemy_' + str(num)
+            enemy_frame_name = self.robot_name + '/enemy_' + 'sensed'#str(num)
             map_frame_name   = self.robot_name + "/map"
             self.tf_broadcaster.sendTransform((self.enemy_pos.x,self.enemy_pos.y,0), (0,0,0,1), rospy.Time.now(), enemy_frame_name, map_frame_name)
             
@@ -61,7 +70,7 @@ class enemy_tracer():
             #ロボットから敵までの距離をpublish
             #self.pub_robot2enemy.publish(closest_enemy_len)
 
-    def is_point_emnemy(self, point_x, point_y):
+    def is_point_enemy(self, point_x, point_y):
         #フィールド内の物体でない、敵と判定する閾値（半径）
         thresh_corner = 0.180
         thresh_center = 0.280
@@ -88,6 +97,19 @@ class enemy_tracer():
         else:
             return True
 
+    def calc_next_enemypos(self, point_x, point_y):
+        current_pos = Pose2D
+        current_pos.x = point_x
+        current_pos.y = point_y
+        current_pos.theta = 0
+
+        # predict next enemy position
+        # calc from vector and velocity
+
+
 if __name__ == '__main__':
     rospy.init_node('enemy_tracer')
     bot = enemy_tracer()
+    r = rospy.Rate(1) # change speed 1fps
+    while not rospy.is_shutdown():
+        r.sleep()

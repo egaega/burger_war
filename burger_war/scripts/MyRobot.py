@@ -18,6 +18,7 @@ from geometry_msgs.msg import PointStamped
 from visualization_msgs.msg import Marker, MarkerArray
 from obstacle_detector.msg import Obstacles
 import sys
+import math
 
 class MyRobot():
     def __init__(self, bot_name="NoName"):
@@ -29,12 +30,44 @@ class MyRobot():
         self.mode = 0
         # robotname
         self.robot_name = rospy.get_param('~robot_name', '')
+        # red side or blue side
+        my_color = rospy.get_param('rside')
+        if my_color == 'r':
+            self.side = 1
+        else:
+            self.side = -1
+        # target
+        self.target = self.calcGoal()
+        self.next_target = 0
+        self.max_target_num = 12
         # tf
         self.tf_broadcaster  = tf.TransformBroadcaster()
         self.tf_listener = tf.TransformListener()
         # topic
         # self.sub_obstacles   = rospy.Subscriber('obstacles', Obstacles, self.obstacles_callback) # obstacle
     
+    def calcGoal(self):
+        if self.side == 1:
+            th = 0
+        else:
+            th = math.pi
+        TARGET = [
+            [-0.5 * self.side, 0, th],                      # bottom
+            [-0.5 * self.side, 0, th + (math.pi * 0.25)], 
+            [0, 0.5 * self.side, th + (math.pi * 1.0)],     # left
+            [0, 0.5 * self.side, th - (math.pi * 0.5)],
+            [0, 0.5 * self.side, th],
+            [0, 0.5 * self.side, th - (math.pi * 0.25)],
+            [0.5 * self.side, 0, th - (math.pi * 0.5)],     # top
+            [0.5 * self.side, 0, th + (math.pi * 1.0)],
+            [0.5 * self.side, 0, th + (math.pi * 1.25)],
+            [0, -0.5 * self.side, th],                      # right
+            [0, -0.5 * self.side, th + (math.pi * 0.5)],
+            [0, -0.5 * self.side, th + (math.pi * 1.0)]
+            
+        ]
+        return TARGET
+
     # RESPECT
     def setGoal(self,x,y,yaw):
         self.client.wait_for_server()
@@ -61,21 +94,10 @@ class MyRobot():
             return self.client.get_result()
 
     def basic_move(self):
-        self.setGoal(-0.5,0,0)
-        self.setGoal(-0.5,0,3.1415*0.25)
-        
-        self.setGoal(0,0.5,0)
-        self.setGoal(0,0.5,3.1415*1.5)
-        self.setGoal(0,0.5,3.1415)
-        self.setGoal(0,0.5,3.1415*1.75)
-        
-        self.setGoal(0.5,0,3.1415*1.5)
-        self.setGoal(0.5,0,3.1415)
-        self.setGoal(0.5,0,3.1415*1.25)
-        
-        self.setGoal(0,-0.5,3.1415)
-        self.setGoal(0,-0.5,3.1415*0.5)
-        self.setGoal(0,-0.5,0)
+        self.setGoal(self.target[self.next_target][0], self.target[self.next_target][1], self.target[self.next_target][2])
+        self.next_target += 1
+        if self.next_target >= self.max_target_num:
+            self.next_target = 0
 
     def strategy(self):
         r = rospy.Rate(1) # change speed 1fps
