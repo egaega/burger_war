@@ -9,6 +9,7 @@ from geometry_msgs.msg import PointStamped
 from geometry_msgs.msg import Pose2D
 from visualization_msgs.msg import Marker, MarkerArray
 from obstacle_detector.msg import Obstacles
+import numpy as np
 
 class enemy_tracer():
     def __init__(self, bot_name="NoName"):
@@ -16,7 +17,9 @@ class enemy_tracer():
         self.name = bot_name
         self.robot_name = rospy.get_param('~robot_name', '')
         # enemy pos
-        self.enemy_pos = Pose2D() # x, y, th
+        self.enemy_x = -10
+        self.enemy_y = -10
+        self.enemy_th = 0
         # tf
         self.tf_broadcaster  = tf.TransformBroadcaster()
         self.tf_listener = tf.TransformListener()
@@ -57,18 +60,23 @@ class enemy_tracer():
 
         #敵を検出している場合、その座標と距離を出力
         if closest_enemy_len < sys.float_info.max:
-            self.enemy_pos.x = closest_enemy_x
-            self.enemy_pos.y = closest_enemy_y
+            # self.enemy_pos.x = closest_enemy_x
+            # self.enemy_pos.y = closest_enemy_y
+            
             #敵の座標をTFでbroadcast
             enemy_frame_name = self.robot_name + '/enemy_' + 'sensed'#str(num)
             map_frame_name   = self.robot_name + "/map"
-            self.tf_broadcaster.sendTransform((self.enemy_pos.x,self.enemy_pos.y,0), (0,0,0,1), rospy.Time.now(), enemy_frame_name, map_frame_name)
+            self.tf_broadcaster.sendTransform((closest_enemy_x,closest_enemy_y, 0), (0,0,0,1), rospy.Time.now(), enemy_frame_name, map_frame_name)
+            # self.tf_broadcaster.sendTransform((self.enemy_pos.x,self.enemy_pos.y,0), (0,0,0,1), rospy.Time.now(), enemy_frame_name, map_frame_name)
             
             # enemy_frame_name = self.robot_name + "/enemy_closest"
             # self.tf_broadcaster.sendTransform((closest_enemy_x,closest_enemy_y,0), (0,0,0,1), rospy.Time.now(), enemy_frame_name, map_frame_name)
 
             #ロボットから敵までの距離をpublish
             #self.pub_robot2enemy.publish(closest_enemy_len)
+
+            # pridict next enemy position
+            self.calc_next_enemypos(closest_enemy_x, closest_enemy_y)
 
     def is_point_enemy(self, point_x, point_y):
         #フィールド内の物体でない、敵と判定する閾値（半径）
@@ -97,16 +105,37 @@ class enemy_tracer():
         else:
             return True
 
-    def calc_next_enemypos(self, point_x, point_y):
-        current_pos = Pose2D
-        current_pos.x = point_x
-        current_pos.y = point_y
-        current_pos.theta = 0
+    def calc_next_enemypos(self, point_x, point_y): 
+        current = [point_x, point_y]
+        privious = [self.enemy_x, self.enemy_y]
+        base = [1, 0]
+        E = np.array(base)
+        V = np.array(current) - np.array(privious)
+        n = np.linalg.norm(V)
+        
+        if n < 0.001: # skip mm order
+            return False    
+        i = np.inner(E,V)
+        self.enemy_x = point_x
+        self.enemy_y = point_y     
+        theta = np.arccos(np.inner(E,V) / (1.0 * np.linalg.norm(V)))
 
-        # predict next enemy position
-        # calc from vector and velocity
+        # predict next enemy position        
+        next_pos = Pose2D
+        if V[1] > 0:
+            next_pos.theta = theta
+        else:
+            next_pos.theta = -theta
+        # euler 2 quaternion
+        q = tf.transformations.quaternion_from_euler(0, 0, theta)
 
-
+        # publish pridict result
+        next_pos.x = self.enemy_x + V[0]
+        next_pos.y = self.enemy_y + V[1]
+        enemy_frame_name = self.robot_name + '/enemy_' + 'pridicted'#str(num)
+        map_frame_name   = self.robot_name + "/map"
+        self.tf_broadcaster.sendTransform((next_pos.x, next_pos.y, 0), (q[0], q[1], q[2], q[3]), rospy.Time.now(), enemy_frame_name, map_frame_name)
+        
 if __name__ == '__main__':
     rospy.init_node('enemy_tracer')
     bot = enemy_tracer()
